@@ -1,67 +1,61 @@
 import torch
 
-def get_entropy_of_dataset(data_tensor: torch.Tensor):
+def get_entropy_of_dataset(tensor: torch.Tensor) -> float:
     """
-    Calculate the entropy of the entire dataset (for PyTorch)
-    Last column in 'data_tensor' is assumed to be the target variable.
+    Compute entropy of dataset (last column is target).
     """
-    if data_tensor.shape[0] == 0:
+    if tensor.shape[0] == 0:
         return 0.0
-    labels = data_tensor[:, -1]
-    classes, class_counts = torch.unique(labels, return_counts=True)
-    total_samples = data_tensor.shape[0]
-    probs = class_counts.float() / total_samples
-    entropy_val = 0.0
-    for p in probs:
-        if p > 0:
-            entropy_val -= p * torch.log2(p)
-    return float(entropy_val)
+    
+    labels = tensor[:, -1]
+    _, counts = torch.unique(labels, return_counts=True)
+    probs = counts.float() / counts.sum()
 
-def get_avg_info_of_attribute(data_tensor: torch.Tensor, attr_index: int):
+    # Compact form using sum comprehension
+    return float(sum([-p * torch.log2(p) for p in probs if p > 0]))
+
+
+def get_avg_info_of_attribute(tensor: torch.Tensor, attribute: int) -> float:
     """
-    Calculate the average information (weighted entropy) of an attribute (PyTorch).
+    Compute weighted average entropy of an attribute.
     """
-    if data_tensor.shape[0] == 0 or attr_index < 0 or attr_index >= data_tensor.shape[1] - 1:
+    if tensor.shape[0] == 0 or attribute < 0 or attribute >= tensor.shape[1] - 1:
         return 0.0
-    col_values = data_tensor[:, attr_index]
-    total_samples = data_tensor.shape[0]
-    unique_vals = torch.unique(col_values)
-    weighted_entropy = 0.0
-    for val in unique_vals:
-        subset_mask = (col_values == val)
-        subset_tensor = data_tensor[subset_mask]
-        subset_weight = subset_tensor.shape[0] / total_samples
-        if subset_tensor.shape[0] > 0:
-            subset_ent = get_entropy_of_dataset(subset_tensor)
-            weighted_entropy += subset_weight * subset_ent
-    return float(weighted_entropy)
+    
+    values = tensor[:, attribute]
+    total = tensor.shape[0]
 
-def get_information_gain(data_tensor: torch.Tensor, attr_index: int):
+    # Weighted entropy via list comprehension
+    return float(sum(
+        (subset.shape[0] / total) * get_entropy_of_dataset(subset)
+        for val in torch.unique(values)
+        for subset in [tensor[values == val]]
+        if subset.shape[0] > 0
+    ))
+
+
+def get_information_gain(tensor: torch.Tensor, attribute: int) -> float:
     """
-    Calculate information gain for an attribute in the dataset (PyTorch).
+    Compute information gain of an attribute.
     """
-    if data_tensor.shape[0] == 0:
+    if tensor.shape[0] == 0:
         return 0.0
-    dataset_entropy = get_entropy_of_dataset(data_tensor)
-    avg_entropy = get_avg_info_of_attribute(data_tensor, attr_index)
-    info_gain_val = dataset_entropy - avg_entropy
-    return round(float(info_gain_val), 4)
+    
+    return round(
+        get_entropy_of_dataset(tensor) - get_avg_info_of_attribute(tensor, attribute), 4
+    )
 
-def get_selected_attribute(data_tensor: torch.Tensor):
+
+def get_selected_attribute(tensor: torch.Tensor):
     """
-    Return:
-      - dict: {attribute_index: information_gain}
-      - int: index of attribute with highest info gain
-    for PyTorch tensors.
+    Returns:
+      - dict {attribute: information_gain}
+      - best attribute index
     """
-    if data_tensor.shape[0] == 0 or data_tensor.shape[1] <= 1:
+    if tensor.shape[0] == 0 or tensor.shape[1] <= 1:
         return {}, -1
-    num_attrs = data_tensor.shape[1] - 1
-    info_gain_dict = {}
-    for idx in range(num_attrs):
-        info_gain_dict[idx] = get_information_gain(data_tensor, idx)
-    if not info_gain_dict:
-        return {}, -1
-    best_attr = max(info_gain_dict, key=info_gain_dict.get)
-    return info_gain_dict, best_attr
 
+    # Dictionary comprehension for info gains
+    gains = {i: get_information_gain(tensor, i) for i in range(tensor.shape[1] - 1)}
+    
+    return (gains, max(gains, key=gains.get)) if gains else ({}, -1)
