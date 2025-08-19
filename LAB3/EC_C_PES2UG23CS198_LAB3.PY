@@ -64,3 +64,4 @@ def get_selected_attribute(data_tensor: torch.Tensor):
         return {}, -1
     best_attr = max(info_gain_dict, key=info_gain_dict.get)
     return info_gain_dict, best_attr
+
